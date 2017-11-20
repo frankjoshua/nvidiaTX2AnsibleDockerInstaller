@@ -1,0 +1,92 @@
+---
+- hosts: tx2
+  vars:
+    kernel_dir: /home/nvidia/kernel
+    kernel_version: 4.4.15-docker
+  tasks:
+
+  - name: Ping tx2 to check ssh
+    ping:
+
+  - name: Pull git repo to rebuild kernel
+    git:
+      repo: 'https://github.com/frankjoshua/buildJetsonTX2Kernel.git'
+      dest: "{{ kernel_dir }}"
+
+  - name: Download the kernel sources (5 to 15 min depending on internet speed)
+    shell: ./getKernelSources.sh >> kernel_log.txt
+    args:
+      chdir: "{{ kernel_dir }}"
+      creates: kernel_log.txt
+    become: yes
+
+  - name: Copy docker config file
+    shell: cp -v ./docker_config/config /usr/src/kernel/kernel-4.4/.config >> /usr/src/kernel/kernel-4.4/config
+    args:
+      chdir: "{{ kernel_dir }}"
+      creates: /usr/src/kernel/kernel-4.4/config
+
+  - name: Build the new kernel (Can take 15 to 20 minutes to complete)
+    shell: ./makeKernel.sh >> kernel_make_log.txt
+    args:
+      chdir: "{{ kernel_dir }}"
+      creates: kernel_make_log.txt
+    become: yes
+
+  - name: Copy the kernel to boot location
+    shell: ./copyImage.sh >> kernel_copy_log.txt
+    args:
+      chdir: "{{ kernel_dir }}"
+      creates: kernel_copy_log.txt
+    become: yes
+
+  - name: Get Kernel version
+    shell: uname -r
+    register: kernel_shell_output
+
+  - debug: msg="{{ kernel_shell_output.stdout }}"
+
+  - name: Send the reboot command
+    shell: sleep 2 && shutdown -r now "Ansible updates triggered"
+    async: 1
+    poll: 0
+    become: yes
+    when: kernel_shell_output.stdout != "{{ kernel_version }}"
+
+  - name: This pause is mandatory, otherwise the existing control connection gets reused!
+    pause: seconds=30
+    when: kernel_shell_output.stdout != "{{ kernel_version }}"
+
+  - name: Now we will run a local 'ansible -m ping' on this host until it returns.
+    local_action: shell ansible -i ./hosts -u {{ ansible_user_id }} -m ping {{ inventory_hostname }}
+    register: result
+    until: result.rc == 0
+    retries: 30
+    delay: 10
+
+  - name: Install https apt support for docker apt repo
+    apt:
+      name: "{{ item }}"
+      state: present
+    with_items:
+      - apt-transport-https
+      - ca-certificates
+    become: yes
+
+  - name: Add docker repo to apt sources
+    apt_repository:
+      repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu xenial stable
+      state: present
+    become: yes
+
+  - name: Install the docker.io package
+    apt:
+      name: docker.io
+      state: present
+    become: yes
+
+  - name: Add nvidia user to the docker group
+    user:
+      name: nvidia
+      groups: docker
+    become: yes
