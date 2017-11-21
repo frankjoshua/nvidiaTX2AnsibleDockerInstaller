@@ -13,6 +13,12 @@
       repo: 'https://github.com/frankjoshua/buildJetsonTX2Kernel.git'
       dest: "{{ kernel_dir }}"
 
+  - name: Get Kernel version
+    shell: uname -r
+    register: kernel_shell_output
+
+  - debug: msg="{{ kernel_shell_output.stdout }}"
+
   - name: Download the kernel sources (5 to 15 min depending on internet speed)
     shell: ./getKernelSources.sh >> kernel_log.txt
     args:
@@ -25,6 +31,7 @@
     args:
       chdir: "{{ kernel_dir }}"
       creates: /usr/src/kernel/kernel-4.4/config
+    when: kernel_shell_output.stdout != "{{ kernel_version }}"
 
   - name: Build the new kernel (Can take 15 to 20 minutes to complete)
     shell: ./makeKernel.sh >> kernel_make_log.txt
@@ -39,12 +46,6 @@
       chdir: "{{ kernel_dir }}"
       creates: kernel_copy_log.txt
     become: yes
-
-  - name: Get Kernel version
-    shell: uname -r
-    register: kernel_shell_output
-
-  - debug: msg="{{ kernel_shell_output.stdout }}"
 
   - name: Send the reboot command
     shell: sleep 2 && shutdown -r now "Ansible updates triggered"
@@ -64,6 +65,10 @@
     retries: 30
     delay: 10
 
+  - name: Get Kernel version after reboot
+    shell: uname -r
+    register: kernel_shell_output
+
   - name: Install https apt support for docker apt repo
     apt:
       name: "{{ item }}"
@@ -75,18 +80,41 @@
 
   - name: Add docker repo to apt sources
     apt_repository:
-      repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu xenial stable
+      repo: deb [arch=aarch64] https://download.docker.com/linux/ubuntu xenial stable
       state: present
+    become: yes
+
+  - name: Add an apt key for Docker repo
+    apt_key:
+      keyserver: keyserver.ubuntu.com #url: https://download.docker.com/linux/ubuntu/gpg
+      id: 7EA0A9C3F273FCD8
     become: yes
 
   - name: Install the docker.io package
     apt:
       name: docker.io
-      state: present
+      state: latest
+    become: yes
+
+  - name: Install docker-compose
+    apt:
+      name: docker-compose
+      state: latest
     become: yes
 
   - name: Add nvidia user to the docker group
     user:
       name: nvidia
       groups: docker
+      append: yes
+    become: yes
+
+  - name: Cleanup build files
+    file: path=/usr/src/{{ item }} state=absent recurse=no
+    with_items:
+      - "kernel"
+      - "hardware"
+      - "kernel_src.tbz2"
+      - "r27.1.0_sources.tbz2"
+    when: kernel_shell_output.stdout == "{{ kernel_version }}"
     become: yes

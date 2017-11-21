@@ -6,3 +6,12 @@ Ansible play book to install Docker on the nvidia TX2
 
 Then run start.sh
 The script assumes default settings on the TX2 and that it is reachable by pinging tegra-ubuntu.local
+
+Optional Steps
+The default version of docker is old. You may want to update to a newer version. These methods change but as of the time of this writing this worked.
+Download and install docker-ce from https://docs.docker.com/engine/installation/linux/docker-ce/binaries
+The install docker-compose using pip
+sudo apt-get remove docker-compose
+sudo apt-get install python-pip
+sudo pip install setuptools
+sudo pip install docker-compose
