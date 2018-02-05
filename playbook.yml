@@ -31,7 +31,7 @@
     args:
       chdir: "{{ kernel_dir }}"
       creates: /usr/src/kernel/kernel-4.4/config
-    when: kernel_shell_output.stdout != "{{ kernel_version }}"
+    #when: kernel_shell_output.stdout != "{{ kernel_version }}"
 
   - name: Build the new kernel (Can take 15 to 20 minutes to complete)
     shell: ./makeKernel.sh >> kernel_make_log.txt
@@ -90,9 +90,9 @@
       id: 7EA0A9C3F273FCD8
     become: yes
 
-  - name: Install the docker.io package
+  - name: Install the docker-ce package
     apt:
-      name: docker.io
+      name: docker-ce
       state: latest
     become: yes
 
